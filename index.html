@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>地方業務績效考評自動計分工具</title>
+<!-- SheetJS 0.20.3 本機副本（npm 上的 0.18.5 有 CVE-2023-30533 / CVE-2024-22363，且不依賴外部 CDN） -->
+<script src="vendor/xlsx.full.min.js"></script>
+<style>
+:root{--blue:#1f4e78;--green:#107c41;--red:#b42318;--orange:#b54708;--bg:#f4f7fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:"Microsoft JhengHei",system-ui,sans-serif;color:#222}
+.wrap{max-width:1280px;margin:auto;padding:24px 16px}
+.hero{background:linear-gradient(135deg,#17365d,#2f75b5);color:#fff;padding:25px 28px;border-radius:16px;box-shadow:0 8px 26px #0002}
+.hero h1{margin:0 0 8px;font-size:28px}
+.card{background:#fff;margin-top:18px;padding:20px;border-radius:14px;box-shadow:0 4px 16px #0001}
+.grid,.mapping{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.mapping{margin-top:14px}
+.filebox{padding:14px;border:1px solid #dbe5ef;border-radius:10px;background:#f8fbff}
+.filebox b{display:block;margin-bottom:8px}
+.filebox input{max-width:100%}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button{border:0;border-radius:8px;padding:11px 18px;font-weight:700;cursor:pointer;background:var(--blue);color:#fff;font:inherit;font-weight:700}
+button.secondary{background:var(--green)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.status{margin-top:12px;padding:11px 13px;border-radius:8px;background:#fff3cd}
+.ok{background:#dff3e5;color:#075b2c}.err{background:#fde2e2;color:#8b0000}
+.formula{font-size:18px;font-weight:800;color:#17365d;background:#eef5fb;border-left:5px solid #2f75b5;padding:15px;border-radius:8px;line-height:1.8}
+.note{font-size:14px;color:#555;line-height:1.8}
+.summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.badge{padding:6px 10px;border-radius:999px;font-weight:700;background:#e8eef5}
+.badge.e{background:#fde2e2;color:var(--red)}.badge.w{background:#fff0d5;color:var(--orange)}.badge.o{background:#dff3e5;color:var(--green)}
+.tablewrap{overflow:auto;max-height:55vh;border:1px solid #ddd;border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:1000px}
+th{position:sticky;top:0;background:var(--blue);color:#fff;z-index:1}
+th,td{padding:9px 10px;border-bottom:1px solid #e5e5e5;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td.empty{text-align:center;padding:30px}
+.issues td:nth-child(4){text-align:left;white-space:normal}
+.errorRow{background:#fff3f2}.warnRow{background:#fff8eb}
+.score{font-weight:800;color:#17365d}
+.mapbox{border:1px solid #cbdbea;border-radius:10px;padding:14px;background:#f8fbff}
+.mapbox h3{margin:0 0 8px;color:#17365d}
+.mapbox ul{margin:0;padding-left:20px;line-height:1.8}
+.detail th,.detail td{font-size:13px}
+.detail td.source{text-align:left;color:#555}
+.detail td.expr{text-align:left;white-space:normal;min-width:360px;color:#333;line-height:1.5}
+@media(max-width:850px){.grid,.mapping{grid-template-columns:1fr}.hero h1{font-size:22px}}
+</style>
+</head>
+<body><div class="wrap">
+<section class="hero"><h1>地方一級主計機構業務績效考評工具</h1><p>上傳彙A、彙B、彙C，先檢查資料缺漏，再依預算規模公式計分。資料僅在瀏覽器本機處理，不會上傳。</p></section>
+
+<section class="card"><h2>預算規模公式與欄位對照</h2>
+<div class="formula">預算規模＝營業基金總收入＋作業基金總收入＋特別收入基金基金用途＋債務基金基金用途＋資本計畫基金基金用途</div>
+<div class="mapping">
+<div class="mapbox"><h3>彙A：直轄市總表</h3><ul><li>營業基金總收入：E欄</li><li>作業基金總收入：J欄</li><li>特別收入基金用途：P欄</li><li>資本計畫基金用途：U欄</li><li>債務基金用途：Z欄</li><li>母基金數：AB欄</li><li>分基金數：AC欄</li></ul></div>
+<div class="mapbox"><h3>彙B：縣市總表（縣市）</h3><ul><li>營業基金總收入：E欄</li><li>作業基金總收入：J欄</li><li>特別收入基金用途：P欄</li><li>資本計畫基金用途：U欄</li><li>債務基金用途：無此欄，按0計</li><li>母基金數：W欄</li><li>分基金數：X欄</li></ul></div>
+<div class="mapbox"><h3>彙C：縣市鄉鎮總表</h3><ul><li>鄉鎮市公所基金數：M欄</li><li>作為考評表j項計分依據</li></ul></div>
+</div>
+<div class="note"><b>業權型基金</b>＝營業基金＋作業基金，採計「總收入」；<b>政事型基金</b>＝特別收入基金＋債務基金＋資本計畫基金，採計「基金用途」。原始資料明確填列0時以0計；必要欄位空白時列為資料缺漏。</div>
+</section>
+
+<section class="card">
+<div class="grid">
+<label class="filebox"><b>① 彙A：直轄市</b><input id="fileA" type="file" accept=".xls,.xlsx"></label>
+<label class="filebox"><b>② 彙B：縣市</b><input id="fileB" type="file" accept=".xls,.xlsx"></label>
+<label class="filebox"><b>③ 彙C：鄉鎮市</b><input id="fileC" type="file" accept=".xls,.xlsx"></label>
+</div>
+<div class="actions"><button id="calc">檢查並計算</button><button id="xlsx" class="secondary" disabled>下載Excel結果</button><button id="csv" class="secondary" disabled>下載CSV</button><button id="check" class="secondary" disabled>下載檢核報告</button></div>
+<div id="status" class="status" role="status">請選擇彙A、彙B及彙C。</div>
+</section>
+
+<section class="card"><h2>資料缺漏檢查</h2><div id="summary" class="summary"><span class="badge">尚未檢查</span></div>
+<div class="tablewrap"><table class="issues"><thead><tr><th>來源</th><th>等級</th><th>縣市／項目</th><th>檢核結果</th></tr></thead><tbody id="issues"><tr><td colspan="4" class="empty">尚未檢查</td></tr></tbody></table></div></section>
+
+<section class="card"><h2>各縣市預算規模計算明細</h2><div class="note">顯示各來源欄位的原始金額、展開算式及合計。金額單位均為千元。</div>
+<div class="tablewrap"><table class="detail"><thead><tr><th>縣市</th><th>來源</th><th>營業總收入<br>E欄</th><th>作業總收入<br>J欄</th><th>特別收入基金用途<br>P欄</th><th>債務基金用途<br>Z欄</th><th>資本計畫基金用途<br>U欄</th><th>展開算式</th><th>預算規模</th></tr></thead><tbody id="details"><tr><td colspan="9" class="empty">尚未計算</td></tr></tbody></table></div></section>
+
+<section class="card"><h2>計分結果</h2><div class="note">有「錯誤」時停止計分，避免把空白誤當成0。</div>
+<div class="tablewrap"><table><thead><tr><th>縣市</th><th>母基金數</th><th>分基金數</th><th>預算規模（千元）</th><th>鄉鎮基金數</th><th>g</th><th>h</th><th>i</th><th>j</th><th>l小計</th><th>評核分數</th></tr></thead><tbody id="tbody"><tr><td colspan="11" class="empty">尚未計算</td></tr></tbody></table></div></section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const AEXP = ['臺北市','新北市','桃園市','臺中市','臺南市','高雄市'];
+const BEXP = ['宜蘭縣','新竹縣','苗栗縣','南投縣','彰化縣','雲林縣','嘉義縣','屏東縣','臺東縣','花蓮縣','澎湖縣','基隆市','新竹市','嘉義市','金門縣','連江縣'];
+
+// 欄位索引（0起算）：E=4 J=9 P=15 U=20 Z=25 AB=27 AC=28；彙B W=22 X=23；彙C M=12
+const COL = {
+  A: {operating:4, operation:9, special:15, capital:20, debt:25, mother:27, sub:28},
+  B: {operating:4, operation:9, special:15, capital:20, mother:22, sub:23},
+  C: {township:12}
+};
+const SHEET = {A:'直轄市總表', B:'縣市總表(縣市)', C:'縣市鄉鎮總表'};
+const DATA_START_ROW = 5; // 前5列為表頭
+
+let results = [], issues = [];
+
+// ---------- 小工具 ----------
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const missing = v => v === null || v === undefined || String(v).trim() === '';
+// 接受數值或「1,234」這類文字數字
+const toNum = v => typeof v === 'number' ? v : Number(String(v).replace(/[,\s]/g, ''));
+const numeric = v => !missing(v) && Number.isFinite(toNum(v));
+const round2 = x => Math.round(x * 100) / 100; // 消除 0.4+0.35 這類浮點誤差
+// 名稱正規化：去空白（含「宜 蘭 縣」）、台→臺
+const normName = v => String(v ?? '').replace(/\s/g, '').replace(/台/g, '臺');
+// 工作表名稱正規化：全形括號/空白
+const normSheet = s => s.replace(/\s/g, '').replace(/（/g, '(').replace(/）/g, ')');
+
+function add(src, level, item, msg) { issues.push({src, level, item, msg}); }
+
+function rows(wb, name) {
+  const real = wb.SheetNames.find(s => normSheet(s) === normSheet(name));
+  if (!real) throw Error(`找不到工作表「${name}」（現有：${wb.SheetNames.join('、')}）`);
+  return XLSX.utils.sheet_to_json(wb.Sheets[real], {header:1, defval:null, raw:true});
+}
+
+// 逐列找出預期縣市，檢查必要欄位；回傳 {縣市: 該列}
+function inspect(src, arr, expected, cols) {
+  const map = {}, seen = {};
+  for (let r = DATA_START_ROW; r < arr.length; r++) {
+    const name = normName(arr[r]?.[0]);
+    if (!expected.includes(name)) continue;
+    if (seen[name]) add(src, '錯誤', name, `名稱重複：第${seen[name]}列及第${r + 1}列`);
+    seen[name] = r + 1;
+    map[name] = arr[r];
+    for (const c of cols) {
+      const v = arr[r][c], cell = XLSX.utils.encode_col(c) + (r + 1);
+      if (missing(v)) add(src, '錯誤', name, `${cell} 必要資料空白`);
+      else if (!numeric(v)) add(src, '錯誤', name, `${cell} 應為數值，實際為「${v}」`);
+    }
+  }
+  for (const x of expected) if (!seen[x]) add(src, '錯誤', x, '缺少縣市資料列');
+  return map;
+}
+
+// ---------- 計分級距 ----------
+const gs = x => x >= 20 ? 1.6 : x >= 15 ? 1.2 : x >= 10 ? .8 : x >= 2 ? .4 : 0;            // 母基金數
+const hs = x => x >= 200 ? 1 : x >= 150 ? .75 : x >= 100 ? .5 : x >= 2 ? .35 : 0;          // 分基金數
+const is = x => x >= 5e7 ? 2.4 : x >= 2.5e7 ? 2 : x >= 1.5e7 ? 1.6 : x >= 1e7 ? 1.2 : x >= 5e6 ? .8 : .4; // 預算規模(千元)
+const js = x => x >= 16 ? 1 : x >= 11 ? .75 : x >= 6 ? .5 : x >= 1 ? .25 : 0;               // 鄉鎮基金數
+
+function score(d) {
+  d.scale = round2(d.operating + d.operation + d.special + d.debt + d.capital);
+  d.g = gs(d.mother); d.h = hs(d.sub); d.i = is(d.scale); d.j = js(d.township);
+  d.l = round2(Math.min(7, d.g + d.h + d.i + d.j));
+  d.total = round2(75 + d.l);
+  return d;
+}
+
+function pick(row, cols) {
+  const o = {};
+  for (const k in cols) o[k] = toNum(row[cols[k]]);
+  return o;
+}
+
+// 純計算（不碰 DOM）：輸入三個 workbook，填入 issues / results
+function compute(wa, wb, wc) {
+  issues = []; results = [];
+  const load = (src, w) => { try { return rows(w, SHEET[src]); } catch (e) { add('彙' + src, '錯誤', '工作表', e.message); } };
+  const ar = load('A', wa), br = load('B', wb), cr = load('C', wc);
+  const am = ar ? inspect('彙A', ar, AEXP, Object.values(COL.A)) : {};
+  const bm = br ? inspect('彙B', br, BEXP, Object.values(COL.B)) : {};
+  const cm = cr ? inspect('彙C', cr, BEXP, Object.values(COL.C)) : {};
+  if (issues.some(x => x.level === '錯誤')) return false;
+  for (const name of AEXP)
+    results.push(score({name, source:'彙A／直轄市總表', ...pick(am[name], COL.A), township:0}));
+  for (const name of BEXP)
+    results.push(score({name, source:'彙B／縣市總表(縣市)', ...pick(bm[name], COL.B), debt:0, ...pick(cm[name], COL.C)}));
+  return true;
+}
+
+// ---------- 畫面 ----------
+const fmt = x => Number(x).toLocaleString('zh-TW', {maximumFractionDigits:2});
+const td = (v, cls = '') => `<td${cls ? ` class="${cls}"` : ''}>${esc(v)}</td>`;
+
+function setStatus(cls, text) { $('#status').className = 'status ' + cls; $('#status').textContent = text; }
+
+function renderIssues() {
+  const e = issues.filter(x => x.level === '錯誤').length, w = issues.filter(x => x.level === '警示').length;
+  $('#summary').innerHTML = `<span class="badge ${e ? 'e' : 'o'}">錯誤 ${e}</span><span class="badge ${w ? 'w' : 'o'}">警示 ${w}</span>`;
+  $('#issues').innerHTML = issues.length
+    ? issues.map(x => `<tr class="${x.level === '錯誤' ? 'errorRow' : 'warnRow'}">${td(x.src)}${td(x.level)}${td(x.item)}${td(x.msg)}</tr>`).join('')
+    : '<tr><td colspan="4" class="empty" style="color:#107c41;font-weight:700">檢核通過，未發現必要資料缺漏或格式錯誤。</td></tr>';
+}
+
+function render() {
+  $('#tbody').innerHTML = results.map(d => `<tr>${td(d.name)}${[d.mother,d.sub,d.scale,d.township,d.g,d.h,d.i,d.j].map(v => td(fmt(v))).join('')}${td(fmt(d.l),'score')}${td(fmt(d.total),'score')}</tr>`).join('');
+  $('#details').innerHTML = results.map(d => {
+    const parts = [d.operating, d.operation, d.special, d.debt, d.capital];
+    return `<tr>${td(d.name)}${td(d.source,'source')}${parts.map(v => td(fmt(v))).join('')}${td(parts.map(fmt).join('＋'),'expr')}${td(fmt(d.scale),'score')}</tr>`;
+  }).join('');
+}
+
+const readWb = async f => XLSX.read(await f.arrayBuffer(), {type:'array'});
+
+$('#calc').onclick = async () => {
+  $('#xlsx').disabled = $('#csv').disabled = $('#check').disabled = true;
+  try {
+    const files = ['#fileA','#fileB','#fileC'].map(s => $(s).files[0]);
+    if (files.some(f => !f)) throw Error('請同時選擇彙A、彙B及彙C。');
+    const ok = compute(...await Promise.all(files.map(readWb)));
+    renderIssues();
+    $('#check').disabled = false;
+    if (!ok) return setStatus('err', '發現資料錯誤，已停止計分。');
+    render();
+    $('#xlsx').disabled = $('#csv').disabled = false;
+    setStatus('ok', `檢核通過並完成計分，共${results.length}個直轄市及縣市。`);
+  } catch (e) {
+    issues = [{src:'系統', level:'錯誤', item:'檔案讀取', msg:e.message}];
+    renderIssues();
+    $('#check').disabled = false;
+    setStatus('err', '無法處理：' + e.message);
+  }
+};
+
+// ---------- 匯出 ----------
+const scoreAoa = () => [['縣市','母基金數','分基金數','預算規模（千元）','鄉鎮市公所基金數','g分數','h分數','i分數','j分數','l小計','評核分數'],
+  ...results.map(d => [d.name,d.mother,d.sub,d.scale,d.township,d.g,d.h,d.i,d.j,d.l,d.total])];
+const detailAoa = () => [['縣市','來源','營業基金總收入(E)','作業基金總收入(J)','特別收入基金基金用途(P)','債務基金基金用途(Z)','資本計畫基金基金用途(U)','預算規模'],
+  ...results.map(d => [d.name,d.source,d.operating,d.operation,d.special,d.debt,d.capital,d.scale])];
+const issueAoa = () => [['來源','等級','縣市／項目','檢核結果'],
+  ...(issues.length ? issues.map(x => [x.src,x.level,x.item,x.msg]) : [['彙A／彙B／彙C','通過','完整性檢查','未發現資料缺漏或格式錯誤']])];
+
+function downloadCsv(aoa, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + XLSX.utils.sheet_to_csv(XLSX.utils.aoa_to_sheet(aoa))], {type:'text/csv;charset=utf-8'}));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000); // 立即 revoke 會讓部分瀏覽器下載失敗
+}
+
+$('#xlsx').onclick = () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreAoa()), '計分結果');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailAoa()), '計算明細');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(issueAoa()), '資料檢核');
+  XLSX.writeFile(wb, '地方業務績效考評計分結果_含計算明細.xlsx');
+};
+$('#csv').onclick = () => downloadCsv(scoreAoa(), '地方業務績效考評計分結果.csv');
+$('#check').onclick = () => downloadCsv(issueAoa(), '資料缺漏檢核報告.csv');
+</script>
+</body></html>
