@@ -16,7 +16,9 @@ body{margin:0;background:var(--bg);font-family:"Microsoft JhengHei",system-ui,sa
 .card{background:#fff;margin-top:18px;padding:20px;border-radius:14px;box-shadow:0 4px 16px #0001}
 .grid,.mapping{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .mapping{margin-top:14px}
-.filebox{padding:14px;border:1px solid #dbe5ef;border-radius:10px;background:#f8fbff}
+.filebox{padding:14px;border:2px dashed #b8cde3;border-radius:10px;background:#f8fbff;cursor:pointer;transition:background .15s,border-color .15s}
+.filebox.over{border-color:#2f75b5;background:#e3effa}
+.filebox small{display:block;margin-top:8px;color:#667}
 .filebox b{display:block;margin-bottom:8px}
 .filebox input{max-width:100%}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
@@ -63,9 +65,9 @@ td.empty{text-align:center;padding:30px}
 
 <section class="card">
 <div class="grid">
-<label class="filebox"><b>① 彙A：直轄市</b><input id="fileA" type="file" accept=".xls,.xlsx"></label>
-<label class="filebox"><b>② 彙B：縣市</b><input id="fileB" type="file" accept=".xls,.xlsx"></label>
-<label class="filebox"><b>③ 彙C：鄉鎮市</b><input id="fileC" type="file" accept=".xls,.xlsx"></label>
+<label class="filebox"><b>① 彙A：直轄市</b><input id="fileA" type="file" accept=".xls,.xlsx"><small>點選或拖曳檔案到此框</small></label>
+<label class="filebox"><b>② 彙B：縣市</b><input id="fileB" type="file" accept=".xls,.xlsx"><small>點選或拖曳檔案到此框</small></label>
+<label class="filebox"><b>③ 彙C：鄉鎮市</b><input id="fileC" type="file" accept=".xls,.xlsx"><small>點選或拖曳檔案到此框</small></label>
 </div>
 <div class="actions"><button id="calc">檢查並計算</button><button id="xlsx" class="secondary" disabled>下載Excel結果</button><button id="csv" class="secondary" disabled>下載CSV</button><button id="check" class="secondary" disabled>下載檢核報告</button></div>
 <div id="status" class="status" role="status">請選擇彙A、彙B及彙C。</div>
@@ -193,6 +195,22 @@ function render() {
     return `<tr>${td(d.name)}${td(d.source,'source')}${parts.map(v => td(fmt(v))).join('')}${td(parts.map(fmt).join('＋'),'expr')}${td(fmt(d.scale),'score')}</tr>`;
   }).join('');
 }
+
+// 整個框都可拖放；放下的檔案直接塞進該框的 <input>
+document.querySelectorAll('.filebox').forEach(box => {
+  const input = box.querySelector('input');
+  box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('over'); });
+  box.addEventListener('dragleave', e => { if (!box.contains(e.relatedTarget)) box.classList.remove('over'); });
+  box.addEventListener('drop', e => {
+    e.preventDefault(); box.classList.remove('over');
+    const f = [...e.dataTransfer.files].find(f => /\.xlsx?$/i.test(f.name));
+    if (!f) return setStatus('err', '請拖入 .xls 或 .xlsx 檔案。');
+    const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files;
+  });
+});
+// 拖到框外時避免瀏覽器直接開啟檔案
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => e.preventDefault());
 
 const readWb = async f => XLSX.read(await f.arrayBuffer(), {type:'array'});
 
